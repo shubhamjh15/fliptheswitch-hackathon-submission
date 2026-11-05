@@ -34,6 +34,28 @@ def load_dotenv(path: str | Path = ".env") -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def import_console_credentials(root: str | Path) -> dict[str, dict]:
+    """Collect credentials Switch Console wrote for agents it created.
+
+    Console writes `.switch/agents/<name>.json` ({"env": {SWITCH_API_ENDPOINT,
+    SWITCH_API_TOKEN, SWITCH_AGENT_ID}}) into each agent's working directory.
+    """
+    by_name = {v: k for k, v in AGENT_NAMES.items()}
+    found: dict[str, dict] = {}
+    for f in Path(root).rglob("*.json"):
+        if f.parent.name != "agents" or f.parent.parent.name != ".switch" or f.stem not in by_name:
+            continue
+        try:
+            env = json.loads(f.read_text(encoding="utf-8"))["env"]
+            found[by_name[f.stem]] = {
+                "id": env["SWITCH_AGENT_ID"], "api_key": env["SWITCH_API_TOKEN"],
+                "name": f.stem, "endpoint": env.get("SWITCH_API_ENDPOINT", ""),
+            }
+        except (OSError, KeyError, json.JSONDecodeError):
+            continue
+    return found
+
+
 @dataclass
 class Settings:
     switch_url: str = "http://localhost:8000"
