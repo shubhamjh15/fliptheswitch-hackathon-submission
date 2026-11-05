@@ -239,10 +239,11 @@ The demo service is real. v2.14.0 ships a genuine `KeyError` on GBP and JPY chec
 
 1. **Install** [Switch Console](https://github.com/sandbox-quantum/switch/releases/latest) and connect your chat app ([guide](https://docs.switchagents.ai/switch-rooms/deploy/messaging-apps/index)).
 2. **Configure.** `cp .env.example .env`, then set `SWITCH_URL` (the agent bridge) and `SWITCH_REGISTRATION_TOKEN`.
-3. **Register** the four agents once. Keys are saved to `.snitch/agents.json`:
-   ```bash
-   snitch register
-   ```
+3. **Create the four agents.** Pick one:
+   - **Local Console (no token needed):** in Console go to *Your Agents → +* and add `snitch-sentinel`, `snitch-detective`, `snitch-fixer` and `snitch-scribe`, each with its own folder under `./agents/`. Console writes their credentials to `.switch/agents/<name>.json`. Then run `snitch import`.
+   - **Self-hosted Switch:** set `SWITCH_REGISTRATION_TOKEN` and run `snitch register`.
+
+   Keys are saved to `.snitch/agents.json`.
 4. **Create the war room** in Console: *Templates → Import →* [`snitch-warroom.template.yaml`](snitch/templates/snitch-warroom.template.yaml), then pick your bridge.
 5. **Start** the guarded service and the agents:
    ```bash
