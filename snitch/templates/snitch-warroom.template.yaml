@@ -1,0 +1,39 @@
+# SNITCH war room: an incident room where four agents and your on-call
+# humans handle an outage together. The agents decide nothing destructive on
+# their own: the rollback waits for a human in this channel to approve it.
+#
+# Register the agents first (`snitch register`), then in Switch Console:
+# Templates → Import → this file → Create. Or let an agent call
+# `create_room_from_yaml` with it.
+params:
+  service:
+    type: string
+    description: The service this room guards
+    default: checkout-service
+  bridge:
+    type: bridge
+    description: Where your team chats (Slack, Discord, Teams, Mattermost, Telegram)
+room:
+  name: "snitch-{service}-incidents"
+  description: "Incident war room for {service}. SNITCH agents investigate, humans approve."
+  bridge: "{bridge}"
+  channel_type: channel_private
+  agents: ["snitch-sentinel", "snitch-detective", "snitch-fixer", "snitch-scribe"]
+  users: ["{$creator}"]
+  instructions: |
+    This room handles production incidents for {service}.
+
+    Workflow:
+    1. snitch-sentinel watches health and opens INC-n when the error rate
+       crosses the threshold (or when a human says "@snitch-sentinel page").
+    2. snitch-detective correlates the error spike with the deploy ledger and
+       names the release, commit and author that caused it.
+    3. snitch-fixer posts a rollback plan and WAITS. Only a human reply
+       "@snitch-fixer approve INC-n" executes it; "reject" stands it down.
+    4. snitch-sentinel confirms recovery; snitch-scribe reads this room's
+       history and saves a blameless postmortem as a room document.
+
+    Humans can step in at any point: ask "@snitch-sentinel status",
+    re-run "@snitch-detective INC-n", or reject a plan.
+kickoff: |
+  @snitch-sentinel status
