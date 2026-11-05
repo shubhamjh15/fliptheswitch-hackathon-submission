@@ -5,3 +5,4 @@ __pycache__/
 .snitch/
 .env
 agents/
+demo/
