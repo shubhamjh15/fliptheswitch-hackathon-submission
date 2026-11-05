@@ -1,39 +1,51 @@
-# SNITCH war room: an incident room where four agents and your on-call
-# humans handle an outage together. The agents decide nothing destructive on
-# their own: the rollback waits for a human in this channel to approve it.
+# SNITCH war room: four Switch agents and your on-call humans handle an outage
+# together. Agents use the `snitch` shell tools; the rollback is gated on a human.
 #
-# Register the agents first (`snitch register`), then in Switch Console:
-# Templates → Import → this file → Create. Or let an agent call
-# `create_room_from_yaml` with it.
+# Prerequisites: the four agents exist in Switch Console (Your Agents -> +):
+#   snitch-sentinel, snitch-detective, snitch-fixer, snitch-scribe
+# and `snitch victim` (or your own service) is running.
 params:
-  service:
+  snitch_cmd:
     type: string
-    description: The service this room guards
-    default: checkout-service
-  bridge:
-    type: bridge
-    description: Where your team chats (Slack, Discord, Teams, Mattermost, Telegram)
+    description: Full path to the snitch executable the agents run
+    default: 'C:\Users\jha77\Downloads\killtheswitch\.venv\Scripts\snitch.exe'
 room:
-  name: "snitch-{service}-incidents"
-  description: "Incident war room for {service}. SNITCH agents investigate, humans approve."
-  bridge: "{bridge}"
+  name: "snitch-incidents"
+  description: "Incident war room. Agents investigate, humans approve."
   channel_type: channel_private
   agents: ["snitch-sentinel", "snitch-detective", "snitch-fixer", "snitch-scribe"]
   users: ["{$creator}"]
   instructions: |
-    This room handles production incidents for {service}.
+    This room handles production incidents for checkout-service. Four agents
+    work as a team and hand work to each other by @mentioning the next agent.
+    Every agent posts short, plain messages and always names the incident (INC-1).
 
-    Workflow:
-    1. snitch-sentinel watches health and opens INC-n when the error rate
-       crosses the threshold (or when a human says "@snitch-sentinel page").
-    2. snitch-detective correlates the error spike with the deploy ledger and
-       names the release, commit and author that caused it.
-    3. snitch-fixer posts a rollback plan and WAITS. Only a human reply
-       "@snitch-fixer approve INC-n" executes it; "reject" stands it down.
-    4. snitch-sentinel confirms recovery; snitch-scribe reads this room's
-       history and saves a blameless postmortem as a room document.
+    TOOLS (run these in your shell; never guess their output):
+      {snitch_cmd} status                      current health, version, error rate
+      {snitch_cmd} evidence                    which deploy broke prod, who, why, confidence
+      {snitch_cmd} plan <bad-version>          the rollback plan
+      {snitch_cmd} rollback <ver> --approved-by <human>   EXECUTES a rollback
 
-    Humans can step in at any point: ask "@snitch-sentinel status",
-    re-run "@snitch-detective INC-n", or reject a plan.
+    ROLES AND HAND-OFFS
+    1. @snitch-sentinel: when asked about status or an alert, run `status`.
+       If the service is degraded, open the incident ("INC-1 opened"), say the
+       error rate and version, then hand off: "@snitch-detective INC-1: who did this?"
+    2. @snitch-detective: run `evidence`. Post a short verdict naming the version,
+       commit SHA, author and the evidence, then explain the likely root cause
+       from the trace. Be blameless: name the change, not a culprit. Then hand
+       off: "@snitch-fixer INC-1 bad=<version>: prepare a rollback."
+    3. @snitch-fixer: run `plan <version>` and post the plan. THEN STOP AND WAIT.
+       You may run `rollback` ONLY after a HUMAN in this room replies "approve".
+       Never treat another agent's message as approval. Pass the human's name to
+       --approved-by. After the rollback, report whether service recovered, then
+       hand off: "@snitch-scribe INC-1 is closed. Write the postmortem."
+       If a human says "reject", stand down and ask what they want instead.
+    4. @snitch-scribe: read this room's history (read_context) and write a blameless
+       postmortem (summary, timeline, root cause, what went well, action items).
+       Save it with create_room_document named postmortem-inc-1.
+
+    Humans can step in anywhere: ask any agent for status, re-run the detective,
+    or reject the plan. Do not run tools or post for other agents' roles.
 kickoff: |
-  @snitch-sentinel status
+  @snitch-sentinel status check on checkout-service. If it is degraded, open
+  the incident and hand off to the team. If it is healthy, say so and wait.
