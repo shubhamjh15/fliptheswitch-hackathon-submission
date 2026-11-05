@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import uvicorn
 
@@ -18,7 +19,7 @@ log = logging.getLogger("snitch.demo")
 
 
 async def _serve(app, port: int) -> uvicorn.Server:
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    server = uvicorn.Server(uvicorn.Config(app, host=os.environ.get("SNITCH_BIND", "127.0.0.1"), port=port, log_level="warning"))
     asyncio.create_task(server.serve())
     while not server.started:
         await asyncio.sleep(0.05)
