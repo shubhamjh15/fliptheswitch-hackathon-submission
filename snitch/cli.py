@@ -44,6 +44,52 @@ async def do_register(s: Settings) -> None:
     print("Next: add the four agents to a room (see templates/snitch-warroom.template.yaml) and `snitch run`.")
 
 
+def do_tool(s: Settings, cmd: str, arg: str | None, approved_by: str | None) -> None:
+    """Shell tools for Console-run agents (Claude Code sessions in a Switch room)."""
+    from .investigate import correlate, rollback_target, ts
+
+    http = httpx.Client(base_url=s.service_url, timeout=10)
+    if cmd == "status":
+        h = http.get("/health").json()
+        print(f"{h['service']} is {h['status'].upper()} on {h['version']}: error rate "
+              f"{h['error_rate']*100:.0f}% over {h['requests_30s']} requests (last 30s)")
+    elif cmd == "evidence":
+        deploys, logs = http.get("/deploys").json(), http.get("/logs?level=ERROR&limit=200").json()
+        v = correlate(deploys, logs)
+        if not v.suspect:
+            sys.exit("No deploy history.")
+        sus = v.suspect
+        print(f"SUSPECT: {sus['version']} (sha {sus.get('sha')}, author @{sus.get('author')}, "
+              f'"{sus.get("message")}") deployed {ts(sus["at"])}')
+        print(f"PREVIOUS GOOD: {v.previous['version'] if v.previous else 'none'}")
+        print(f"ERRORS: {v.error_count}, first at {ts(v.first_error_at)}: {v.signature}")
+        print("EVIDENCE: " + "; ".join(v.reasons))
+        print(f"CONFIDENCE: {v.confidence:.0%}")
+        if logs:
+            print("TRACE:\n" + str(logs[-1].get("trace", "")))
+    elif cmd == "plan":
+        if not arg:
+            sys.exit("usage: snitch plan <bad-version>")
+        t = rollback_target(http.get("/deploys").json(), arg)
+        if not t:
+            sys.exit(f"No earlier release than {arg}; a human must handle this.")
+        print(f"ROLLBACK PLAN: {arg} -> {t['version']} (sha {t.get('sha')}, \"{t.get('message')}\")")
+        print("This changes production. Do NOT run `snitch rollback` until a human approves in the room.")
+    elif cmd == "rollback":
+        if not arg or not approved_by:
+            sys.exit("usage: snitch rollback <version> --approved-by <human>. Refusing without a named human approver.")
+        r = http.post("/deploy", json={"version": arg, "actor": f"snitch-fixer (approved by {approved_by})"})
+        r.raise_for_status()
+        import time
+        for _ in range(12):
+            time.sleep(2.5)
+            h = http.get("/health").json()
+            if h["requests_30s"] >= 10 and h["error_rate"] < s.error_rate_threshold:
+                print(f"RECOVERED: {h['version']} healthy, error rate {h['error_rate']*100:.0f}% over {h['requests_30s']} requests")
+                return
+        print("NOT RECOVERED after 30s: escalate to the humans in the room.")
+
+
 def do_import(s: Settings, root: str) -> None:
     from .config import import_console_credentials
 
@@ -69,14 +115,19 @@ async def do_break(s: Settings) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="snitch", description="Incident war-room agents for Switch.")
-    p.add_argument("command", choices=["register", "import", "run", "victim", "break", "mock-switch", "demo", "template"])
+    p.add_argument("command", choices=["register", "import", "status", "evidence", "plan", "rollback", "run", "victim", "break", "mock-switch", "demo", "template"])
+    p.add_argument("arg", nargs="?", help="version for plan/rollback")
+    p.add_argument("--approved-by", default=None, help="human who approved (rollback)")
     p.add_argument("--port", type=int, default=None)
     p.add_argument("--dir", default="agents", help="folder holding the Console-created agent dirs (import)")
     args = p.parse_args(argv)
     _log()
     s = Settings.from_env()
 
-    if args.command == "import":
+    if args.command in ("status", "evidence", "plan", "rollback"):
+        logging.disable(logging.CRITICAL)
+        do_tool(s, args.command, args.arg, args.approved_by)
+    elif args.command == "import":
         do_import(s, args.dir)
     elif args.command == "register":
         asyncio.run(do_register(s))
