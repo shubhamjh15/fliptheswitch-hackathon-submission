@@ -1,0 +1,25 @@
+# Production-style run against a real Switch server.
+#   1. cp .env.example .env  and fill it in
+#   2. docker compose run --rm snitch register
+#   3. docker compose up -d
+services:
+  checkout-service:          # the demo victim; replace with your own service
+    build: .
+    command: ["victim"]
+    ports: ["9000:9000"]
+    restart: unless-stopped
+
+  snitch:
+    build: .
+    command: ["run"]
+    env_file: .env
+    environment:
+      SNITCH_SERVICE_URL: http://checkout-service:9000
+    ports: ["9100:9100"]     # POST /alert (Alertmanager / Grafana webhooks)
+    volumes: ["snitch-data:/data"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: [checkout-service]
+    restart: unless-stopped
+
+volumes:
+  snitch-data:
