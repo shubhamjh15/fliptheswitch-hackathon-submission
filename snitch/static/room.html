@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SNITCH war room</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#11151a; --line:#1f262e; --ink:#e8edf2; --dim:#8a96a3; --acc:#8fc6cf; --red:#ff6b5b; --ok:#5bd69a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 Inter, system-ui, sans-serif; height:100vh; display:grid; grid-template-columns:220px 1fr 300px; }
+  aside, main { min-height:0; }
+  aside { border-right:1px solid var(--line); padding:18px; overflow:auto; }
+  aside.right { border-right:0; border-left:1px solid var(--line); }
+  h1 { font:600 13px ui-monospace, monospace; letter-spacing:.12em; color:var(--acc); margin:0 0 4px; }
+  h2 { font:500 11px ui-monospace, monospace; letter-spacing:.12em; color:var(--dim); margin:22px 0 10px; text-transform:uppercase; }
+  .member { display:flex; gap:10px; align-items:center; padding:5px 0; }
+  .av { width:26px; height:26px; border-radius:6px; display:grid; place-items:center; font:600 12px ui-monospace, monospace; background:#1b232b; color:var(--acc); flex:none; }
+  .av.h { background:#2a2238; color:#d7b8ff; }
+  main { display:flex; flex-direction:column; }
+  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  header b { font-size:17px; }
+  #log { flex:1; overflow:auto; padding:18px 22px; }
+  .msg { display:flex; gap:12px; margin-bottom:16px; }
+  .who { font-weight:600; } .tag { font:500 10px ui-monospace, monospace; border:1px solid #2c4a50; color:var(--acc); padding:1px 5px; border-radius:4px; margin-left:6px; }
+  .time { color:var(--dim); font-size:12px; margin-left:6px; }
+  .body { white-space:pre-wrap; word-break:break-word; }
+  .body code { background:#1b232b; padding:1px 5px; border-radius:4px; font:13px ui-monospace, monospace; }
+  .body pre { background:#0f1318; border:1px solid var(--line); padding:10px; border-radius:6px; overflow:auto; font:12px ui-monospace, monospace; }
+  .mention { color:var(--acc); font-weight:500; }
+  form { display:flex; gap:8px; padding:14px 22px; border-top:1px solid var(--line); }
+  input { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; }
+  #name { width:120px; } #text { flex:1; }
+  button { background:var(--acc); color:#071014; border:0; border-radius:8px; padding:10px 14px; font:600 14px inherit; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:500; }
+  button.danger { background:var(--red); color:#1a0603; }
+  .chips { display:flex; flex-direction:column; gap:8px; }
+  .doc { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; cursor:pointer; }
+  .doc small { color:var(--dim); display:block; }
+  #health { font:13px ui-monospace, monospace; padding:10px; border-radius:8px; background:var(--panel); border:1px solid var(--line); }
+  dialog { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; max-width:760px; width:90vw; }
+  dialog pre { white-space:pre-wrap; font:13px ui-monospace, monospace; }
+  @media (max-width: 900px) { body { grid-template-columns:1fr; } aside { display:none; } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>SNITCH</h1><div style="color:var(--dim);font-size:13px">running on Switch</div>
+  <h2>Members</h2><div id="members"></div>
+</aside>
+<main>
+  <header><div><b id="room"># incidents</b><div style="color:var(--dim);font-size:12px">Agents investigate. Humans approve.</div></div>
+    <button class="danger" id="break" title="Deploy the buggy v2.14.0 release">💥 Ship v2.14.0</button></header>
+  <div id="log"></div>
+  <form id="f"><input id="name" value="priya" aria-label="your name"><input id="text" placeholder="Message the room… try @snitch-sentinel status" autocomplete="off"><button>Send</button></form>
+</main>
+<aside class="right">
+  <h2>Service</h2><div id="health">…</div>
+  <h2>Quick replies</h2>
+  <div class="chips">
+    <button class="ghost" data-say="@snitch-sentinel status">@snitch-sentinel status</button>
+    <button class="ghost" data-say="@snitch-fixer approve INC-{n}">✅ approve rollback</button>
+    <button class="ghost" data-say="@snitch-fixer reject INC-{n}">🛑 reject rollback</button>
+    <button class="ghost" data-say="@snitch-detective who broke INC-{n}?">🕵️ re-investigate</button>
+  </div>
+  <h2>Room documents</h2><div id="docs"><div style="color:var(--dim);font-size:13px">none yet</div></div>
+</aside>
+<dialog id="dlg"><pre id="dlgbody"></pre><form method="dialog"><button>Close</button></form></dialog>
+<script>
+const SERVICE = new URLSearchParams(location.search).get('service') || 'http://localhost:9000';
+let after = 0, inc = 1, docs = [];
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function md(s) {
+  s = esc(s);
+  s = s.replace(/```([\s\S]*?)```/g, (_, c) => '<pre>' + c.trim() + '</pre>');
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  return s.replace(/(^|\s)(@[\w.-]+)/g, '$1<span class="mention">$2</span>');
+}
+function render(m) {
+  const agent = m.sender_name.startsWith('snitch-');
+  const d = document.createElement('div'); d.className = 'msg';
+  d.innerHTML = `<div class="av ${agent ? '' : 'h'}">${esc(m.sender_name[agent ? 7 : 0].toUpperCase())}</div>
+    <div><span class="who">${esc(m.sender_name)}</span>${agent ? '<span class="tag">AGENT</span>' : ''}
+    <span class="time">${new Date(m.timestamp).toLocaleTimeString()}</span><div class="body">${md(m.body)}</div></div>`;
+  const log = document.getElementById('log'); const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
+  const found = m.body.match(/INC-(\d+)/g); if (found) inc = found.at(-1).slice(4);
+}
+async function poll() {
+  try {
+    const r = await (await fetch(`/api/room?after=${after}&wait=20`)).json();
+    document.getElementById('room').textContent = '# ' + r.name;
+    document.getElementById('members').innerHTML = r.members.map(n => `<div class="member"><div class="av">${n[7].toUpperCase()}</div>${esc(n)}</div>`).join('');
+    r.messages.forEach(render); after = r.total; docs = r.documents;
+    if (docs.length) document.getElementById('docs').innerHTML = docs.map((d, i) => `<div class="doc" data-i="${i}">📄 ${esc(d.name)}<small>by ${esc(d.author)}</small></div>`).join('');
+  } catch (e) { await new Promise(r => setTimeout(r, 1500)); }
+  poll();
+}
+async function health() {
+  try { const h = await (await fetch(SERVICE + '/health')).json();
+    const c = h.status === 'ok' ? 'var(--ok)' : 'var(--red)';
+    document.getElementById('health').innerHTML = `<span style="color:${c}">● ${h.status}</span><br>${h.version}<br>errors ${(h.error_rate*100).toFixed(0)}% / ${h.requests_30s} req`;
+  } catch { document.getElementById('health').textContent = 'service unreachable'; }
+}
+async function say(body) {
+  await fetch('/api/say', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: document.getElementById('name').value, body})});
+}
+document.getElementById('f').onsubmit = e => { e.preventDefault(); const t = document.getElementById('text'); if (t.value.trim()) say(t.value); t.value = ''; };
+document.querySelectorAll('[data-say]').forEach(b => b.onclick = () => say(b.dataset.say.replace('{n}', inc)));
+document.getElementById('docs').onclick = e => { const el = e.target.closest('.doc'); if (!el) return;
+  document.getElementById('dlgbody').textContent = docs[el.dataset.i].content; document.getElementById('dlg').showModal(); };
+document.getElementById('break').onclick = () => fetch(SERVICE + '/deploy', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({version:'v2.14.0', actor:'priya (via CI)'})});
+poll(); health(); setInterval(health, 2000);
+</script>
+</body>
+</html>
