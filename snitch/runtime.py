@@ -47,7 +47,7 @@ async def run(settings: Settings) -> None:
     creds = settings.load_credentials()
     agents = {
         role: SwitchAgent(
-            base_url=settings.switch_url,
+            base_url=(creds[role].get("endpoint") or settings.switch_url).rstrip("/"),
             agent_id=creds[role]["id"],
             api_key=creds[role]["api_key"],
             name=AGENT_NAMES[role],
