@@ -239,18 +239,13 @@ The demo service is real. v2.14.0 ships a genuine `KeyError` on GBP and JPY chec
 
 1. **Install** [Switch Console](https://github.com/sandbox-quantum/switch/releases/latest) and connect your chat app ([guide](https://docs.switchagents.ai/switch-rooms/deploy/messaging-apps/index)).
 2. **Configure.** `cp .env.example .env`, then set `SWITCH_URL` (the agent bridge) and `SWITCH_REGISTRATION_TOKEN`.
-3. **Create the four agents.** Pick one:
-   - **Local Console (no token needed):** in Console go to *Your Agents → +* and add `snitch-sentinel`, `snitch-detective`, `snitch-fixer` and `snitch-scribe`, each with its own folder under `./agents/`. Console writes their credentials to `.switch/agents/<name>.json`. Then run `snitch import`.
-   - **Self-hosted Switch:** set `SWITCH_REGISTRATION_TOKEN` and run `snitch register`.
-
-   Keys are saved to `.snitch/agents.json`.
+3. **Create the four agents** in Console: *Your Agents → +*, named `snitch-sentinel`, `snitch-detective`, `snitch-fixer` and `snitch-scribe` (provider: Claude Code). They are ordinary Console-run agents. The room template gives them their roles and tools.
+   *(Self-hosted Switch with a registration token can instead run `snitch register` and `snitch run` for the always-on watcher.)*
 4. **Create the war room** in Console: *Templates → Import →* [`snitch-warroom.template.yaml`](snitch/templates/snitch-warroom.template.yaml), then pick your bridge.
-5. **Start** the guarded service and the agents:
-   ```bash
-   snitch victim &      # or point SNITCH_SERVICE_URL at your own service
-   snitch run
-   ```
-6. **Break it:** `snitch break`. Then in your channel: `@snitch-fixer approve INC-1`.
+5. **Start** the guarded service: `snitch victim` (or point `SNITCH_SERVICE_URL` at your own).
+6. **Break it:** `snitch break`. Then in the room: `@snitch-sentinel status`, and later `@snitch-fixer approve INC-1`.
+
+The agents call these shell tools, so the humans see real output in the room: `snitch status`, `snitch evidence`, `snitch plan <ver>` and `snitch rollback <ver> --approved-by <human>`. The rollback refuses to run without a named human approver.
 
 **With Docker Compose:**
 ```bash
